@@ -5,7 +5,11 @@
 #include <SoftwareSerial.h>
 
 const char* ssid = ".IDEAL";
-const char* password = "";
+const char* wifiPassword = "";
+
+const char* user = "esp8266-lcd-display";
+const char* matrixPassword = "esp8266-lcd-display";
+const char* roomId = "!ZUEZXBBVjWJjQeXgbY:matrix.org";
 
 #define SERIAL_RX 12
 #define SERIAL_TX 13
@@ -16,20 +20,28 @@ HTTPClient http;
 String accessToken;
 String lastMessageToken;
 
-void createLoginBody(char* buffer, int bufferLen) {
+void createLoginBody(char* buffer, int bufferLen, String user, String password) {
   DynamicJsonBuffer jsonBuffer;
   JsonObject& root = jsonBuffer.createObject();
   root["type"] = "m.login.password";
-  root["user"] = "esp8266-lcd-display";
-  root["password"] = "esp8266-lcd-display";
+  root["user"] = user;
+  root["password"] = password;
   root.printTo(buffer, bufferLen);
 }
 
-bool login(void) {
+void createMessageBody(char* buffer, int bufferLen, String message) {
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& root = jsonBuffer.createObject();
+  root["msgtype"] = "m.text";
+  root["body"] = message;
+  root.printTo(buffer, bufferLen);
+}
+
+bool login(String user, String password) {
   bool success = false;
   
   char buffer[512];
-  createLoginBody(buffer, 512);
+  createLoginBody(buffer, 512, user, password);
 
   String url = "http://matrix.org/_matrix/client/r0/login";
 // Serial.printf("POST %s\n", url.c_str());
@@ -55,10 +67,10 @@ bool login(void) {
   return success;
 }
 
-bool getMessages(void) {
+bool getMessages(String roomId) {
   bool success = false;
 
-  String url = "http://matrix.org/_matrix/client/r0/rooms/!ZUEZXBBVjWJjQeXgbY:matrix.org/messages?access_token=" + accessToken + "&limit=1";
+  String url = "http://matrix.org/_matrix/client/r0/rooms/" + roomId + "/messages?access_token=" + accessToken + "&limit=1";
   if (lastMessageToken == "") {
     url += "&dir=b";
   } else {
@@ -96,6 +108,28 @@ bool getMessages(void) {
   return success;
 }
 
+bool sendMessage(String roomId, String message) {
+  bool success = false;
+
+  char buffer[512];
+  createMessageBody(buffer, 512, message);
+
+  String url = "http://matrix.org/_matrix/client/r0/rooms/!ZUEZXBBVjWJjQeXgbY:matrix.org/send/m.room.message/" + String(millis()) + "?access_token=" + accessToken + "&limit=1";
+  Serial.printf("PUT %s\n", url.c_str());
+
+  http.begin(url);
+  int rc = http.sendRequest("PUT", buffer);
+  if (rc > 0) {
+//    Serial.printf("%d\n", rc);
+    if (rc == HTTP_CODE_OK) {
+      success = true;
+    }
+  } else {
+    Serial.printf("Error: %s\n", http.errorToString(rc).c_str());
+  }
+  return success;  
+}
+
 
 void setup(void) {
   pinMode(SERIAL_RX, INPUT);
@@ -107,7 +141,7 @@ void setup(void) {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
   Serial.begin(9600);
-  WiFi.begin(ssid, password);
+  WiFi.begin(ssid, wifiPassword);
   Serial.println("");
 
   // Wait for connection
@@ -124,17 +158,28 @@ void setup(void) {
   serial2.println(WiFi.localIP());
 
   http.setReuse(true);
-  if (login()) {
-    getMessages();
+  if (login(user, matrixPassword)) {
+    getMessages(roomId);
+//    sendMessage(roomId, "Hello from ESP8266");
   }
 }
 
 int nextMillis = 0;
+String input;
 void loop(void){
+  if (serial2.available() > 0) {
+    char c = serial2.read();
+    Serial.print(c);
+    if ((c == '\r') || (c == '\n')) {
+      sendMessage(roomId, input);
+      input = "";
+    } else {
+      input += String(c);
+    }
+  }  
 //  serial2.print("Hello\n");
-  delay(100);
   if (millis() > nextMillis) {
-    getMessages();    
+    getMessages(roomId);    
     nextMillis += 5000;
   }
 //  getMessages();
