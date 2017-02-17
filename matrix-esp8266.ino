@@ -114,7 +114,7 @@ bool sendMessage(String roomId, String message) {
   char buffer[512];
   createMessageBody(buffer, 512, message);
 
-  String url = "http://matrix.org/_matrix/client/r0/rooms/!ZUEZXBBVjWJjQeXgbY:matrix.org/send/m.room.message/" + String(millis()) + "?access_token=" + accessToken + "&limit=1";
+  String url = "http://matrix.org/_matrix/client/r0/rooms/" + roomId + "/send/m.room.message/" + String(millis()) + "?access_token=" + accessToken + "&limit=1";
   Serial.printf("PUT %s\n", url.c_str());
 
   http.begin(url);
